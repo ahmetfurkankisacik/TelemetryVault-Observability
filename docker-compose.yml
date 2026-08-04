@@ -1,0 +1,105 @@
+services:
+  zipkin:
+    image: openzipkin/zipkin:latest
+    container_name: telemetryvault-zipkin
+    ports:
+      - "9411:9411"
+    networks:
+      - telemetryvault-net
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    container_name: telemetryvault-zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "2181:2181"
+    networks:
+      - telemetryvault-net
+
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: telemetryvault-kafka
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+      - "29092:29092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: telemetryvault-zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://telemetryvault-kafka:9092,PLAINTEXT_HOST://localhost:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    networks:
+      - telemetryvault-net
+
+  postgres:
+    image: postgres:15-alpine
+    container_name: telemetryvault-postgres
+    environment:
+      POSTGRES_DB: authdb
+      POSTGRES_USER: sa
+      POSTGRES_PASSWORD: password
+    ports:
+      - "5432:5432"
+    networks:
+      - telemetryvault-net
+
+  auth-service:
+    build:
+      context: ./auth-service
+      dockerfile: Dockerfile
+    container_name: telemetryvault-auth-service
+    ports:
+      - "8081:8081"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://telemetryvault-postgres:5432/authdb
+      SPRING_DATASOURCE_USERNAME: sa
+      SPRING_DATASOURCE_PASSWORD: password
+      ZIPKIN_URL: http://telemetryvault-zipkin:9411/api/v2/spans
+    depends_on:
+      - postgres
+      - zipkin
+    networks:
+      - telemetryvault-net
+
+  vault-event-service:
+    build:
+      context: ./vault-event-service
+      dockerfile: Dockerfile
+    container_name: telemetryvault-event-service
+    ports:
+      - "8082:8082"
+    environment:
+      KAFKA_SERVERS: telemetryvault-kafka:9092
+      ZIPKIN_URL: http://telemetryvault-zipkin:9411/api/v2/spans
+    depends_on:
+      - kafka
+      - zipkin
+    networks:
+      - telemetryvault-net
+
+  api-gateway:
+    build:
+      context: ./api-gateway
+      dockerfile: Dockerfile
+    container_name: telemetryvault-api-gateway
+    ports:
+      - "8080:8080"
+    environment:
+      AUTH_SERVICE_URL: http://telemetryvault-auth-service:8081
+      VAULT_EVENT_SERVICE_URL: http://telemetryvault-event-service:8082
+      ZIPKIN_URL: http://telemetryvault-zipkin:9411/api/v2/spans
+    depends_on:
+      - auth-service
+      - vault-event-service
+      - zipkin
+    networks:
+      - telemetryvault-net
+
+networks:
+  telemetryvault-net:
+    driver: bridge
