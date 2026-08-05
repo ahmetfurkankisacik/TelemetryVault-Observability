@@ -6,6 +6,10 @@ spring:
     name: vault-event-service
   kafka:
     bootstrap-servers: ${KAFKA_SERVERS:localhost:9092}
+    template:
+      observation-enabled: true
+    listener:
+      observation-enabled: true
     consumer:
       group-id: telemetryvault-group
       auto-offset-reset: earliest
