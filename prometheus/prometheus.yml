@@ -1,0 +1,13 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: 'telemetryvault-metrics'
+    metrics_path: '/actuator/prometheus'
+    scrape_interval: 5s
+    static_configs:
+      - targets:
+          - 'telemetryvault-api-gateway:8080'
+          - 'telemetryvault-auth-service:8081'
+          - 'telemetryvault-event-service:8082'
